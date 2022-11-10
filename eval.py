@@ -39,4 +39,3 @@ if __name__ == "__main__":
     # log
     print('# Validation # PSNR: {:.4e}'.format(avg_psnr))
     print('# Validation # SSIM: {:.4e}'.format(avg_ssim))
-    print('abc')
