@@ -218,8 +218,9 @@ class UNet(nn.Module):
         self.final_conv = Block(pre_channel, default(out_channel, in_channel), groups=norm_groups)
 
     def forward(self, x, time):
+        # print(time.shape)
         t = self.time_mlp(time) if exists(self.time_mlp) else None
-
+        # print(t.shape)
         feats = []
         for layer in self.downs:
             if isinstance(layer, ResnetBlocWithAttn):
