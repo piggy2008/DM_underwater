@@ -71,8 +71,8 @@ class DDPM(BaseModel):
             self.SR = self.netG.fine_tune(self.data)
         # l_pix = self.netG.loss_func(self.data['HR'], self.SR)
         # l_pix = l_pix.sum() / int(b * c * h * w)
-        if len(self.SR.size()) == 3:
-            self.SR = torch.reshape(self.SR, (b, c, h, w))
+        # if len(self.SR.size()) == 3:
+        #     self.SR = torch.reshape(self.SR, (b, c, h, w))
         content_loss, style_loss = self.style_loss(self.SR, self.data['SR'], self.data['style'])
         # print('content:', content_loss, ' style:', style_loss)
         l_pix = content_loss + 100000 * style_loss
