@@ -26,7 +26,7 @@ class VGGPerceptualLoss(torch.nn.Module):
         self.resize = resize
 
     def forward(self, input, target, style):
-        print(input.shape, '--', target.shape, '--', style.shape)
+        # print(input.shape, '--', target.shape, '--', style.shape)
         if input.shape[1] != 3:
             input = input.repeat(1, 3, 1, 1)
             target = target.repeat(1, 3, 1, 1)

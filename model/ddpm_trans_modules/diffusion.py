@@ -290,12 +290,14 @@ class GaussianDiffusion(nn.Module):
                     # print(i)
                     img = self.p_sample_finetune(img, torch.full(
                         (b,), i, device=device, dtype=torch.long), condition_x=x, style=x_in['style'])
+
                 if i % sample_inter == 0:
                     ret_img = torch.cat([ret_img, img], dim=0)
         if continous:
             return ret_img
         else:
-            return ret_img[-1]
+            # print('ret_img shape:', ret_img[-b].shape)
+            return ret_img[-b:]
 
     def p_sample_finetune(self, x, t, clip_denoised=True, repeat_noise=False, condition_x=None, style=None):
         b, *_, device = *x.shape, x.device
