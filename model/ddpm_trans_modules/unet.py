@@ -8,6 +8,7 @@ from model.ddpm_trans_modules.trans_block_dual import TransformerBlock_dual
 from model.ddpm_trans_modules.trans_block_eca import TransformerBlock_eca
 from model.ddpm_trans_modules.trans_block_sa import TransformerBlock_sa
 from model.ddpm_trans_modules.trans_block_sge import TransformerBlock_sge
+import torchvision
 
 def exists(x):
     return x is not None
@@ -293,11 +294,19 @@ class UNet(nn.Module):
 
         self.refine = ResnetBloc_norm(dim=dim*2**1, dim_out=dim*2**1, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=True)
         self.de_predict = nn.Sequential(nn.Conv2d(dim * 2 ** 1, out_channel, kernel_size=1, stride=1))
-    def forward(self, x, time):
+
+        # self.style_extractor = StyleFeatures(dim=dim)
+        # self.fuse_feat1 = nn.Conv2d(dim * 2, dim, kernel_size=1, bias=False)
+        # self.fuse_feat2 = nn.Conv2d(int(dim*2**1) * 2, int(dim*2**1), kernel_size=1, bias=False)
+        # self.fuse_feat3 = nn.Conv2d(int(dim*2**2) * 2, int(dim*2**2), kernel_size=1, bias=False)
+        # self.fuse_feat4 = nn.Conv2d(int(dim*2**3) * 2, int(dim*2**3), kernel_size=1, bias=False)
+
+    def forward(self, x, time, style_x=None):
         # print(time.shape)
         t = self.time_mlp(time) if exists(self.time_mlp) else None
         # print(t.shape)
-        feats = []
+        # feats = []
+
         x = self.conv1(x)
         x1 = self.block1(x, t)
 
@@ -309,6 +318,13 @@ class UNet(nn.Module):
 
         x4 = self.conv4(x3)
         x4 = self.block4(x4, t)
+
+        # if style_x is not None:
+        #     feat1, feat2, feat3, feat4 = self.style_extractor(style_x)
+        #     x1 = self.fuse_feat1(torch.cat([x1, feat1], dim=1))
+        #     x2 = self.fuse_feat2(torch.cat([x2, feat2], dim=1))
+        #     x3 = self.fuse_feat3(torch.cat([x3, feat3], dim=1))
+        #     x4 = self.fuse_feat4(torch.cat([x4, feat4], dim=1))
 
         de_level3 = self.conv_up3(x4)
         de_level3 = torch.cat([de_level3, x3], 1)
@@ -327,9 +343,60 @@ class UNet(nn.Module):
 
         return self.de_predict(mid_feat)
 
+class StyleFeatures(torch.nn.Module):
+    def __init__(self, dim=48):
+        super(StyleFeatures, self).__init__()
+        blocks = []
+        blocks.append(torchvision.models.vgg16(pretrained=True).features[:4].eval())
+        blocks.append(torchvision.models.vgg16(pretrained=True).features[4:9].eval())
+        blocks.append(torchvision.models.vgg16(pretrained=True).features[9:16].eval())
+        blocks.append(torchvision.models.vgg16(pretrained=True).features[16:23].eval())
+        for bl in blocks:
+            for p in bl.parameters():
+                p.requires_grad = False
+
+        self.blocks = torch.nn.ModuleList(blocks)
+        self.transform = torch.nn.functional.interpolate
+        self.mean = torch.nn.Parameter(torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.std = torch.nn.Parameter(torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+
+        self.feat1_encode = nn.Sequential(nn.Conv2d(64, dim, kernel_size=3, stride=1, padding=1),
+                                          TransformerBlock_sa(dim=int(dim), num_heads=2, ffn_expansion_factor=2.66,
+                                                                bias=False, LayerNorm_type='WithBias'))
+        self.feat2_encode = nn.Sequential(nn.Conv2d(128, dim*2**1, kernel_size=3, stride=1, padding=1),
+                                          TransformerBlock_sa(dim=int(dim*2**1), num_heads=2, ffn_expansion_factor=2.66,
+                                                                bias=False, LayerNorm_type='WithBias'))
+        self.feat3_encode = nn.Sequential(nn.Conv2d(256, dim*2**2, kernel_size=3, stride=1, padding=1),
+                                          TransformerBlock_sa(dim=int(dim*2**2), num_heads=2, ffn_expansion_factor=2.66,
+                                                              bias=False, LayerNorm_type='WithBias'))
+        self.feat4_encode = nn.Sequential(nn.Conv2d(512, dim*2**3, kernel_size=3, stride=1, padding=1),
+                                          TransformerBlock_sa(dim=int(dim*2**3), num_heads=2, ffn_expansion_factor=2.66,
+                                                              bias=False, LayerNorm_type='WithBias'))
+
+    def forward(self, input):
+        if input.shape[1] != 3:
+            input = input.repeat(1, 3, 1, 1)
+        input = (input + 1) / 2
+        input = (input - self.mean) / self.std
+
+        feat1 = self.blocks[0](input)
+        feat2 = self.blocks[1](feat1)
+        feat3 = self.blocks[2](feat2)
+        feat4 = self.blocks[3](feat3)
+
+        feat1 = self.feat1_encode(feat1)
+        feat2 = self.feat2_encode(feat2)
+        feat3 = self.feat3_encode(feat3)
+        feat4 = self.feat4_encode(feat4)
+
+        return feat1, feat2, feat3, feat4
+
 if __name__ == '__main__':
     img = torch.zeros(4, 6, 128, 128)
+    style_img = torch.zeros(4, 3, 128, 128)
     time = torch.tensor([1, 2, 3, 4])
     model = UNet(inner_channel=48, norm_groups=24)
-    output = model(img, time)
+    # model2 = StyleFeatures()
+    output = model(img, time, style_img)
+    # output = model2(img)
     print(output.shape)

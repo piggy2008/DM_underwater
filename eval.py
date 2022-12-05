@@ -6,7 +6,7 @@ import glob
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path', type=str,
-                        default='experiments/sr_ffhq_221108_193024/results')
+                        default='experiments/sr_ffhq_221118_152017/results')
     args = parser.parse_args()
     real_names = list(glob.glob('{}/*_hr.png'.format(args.path)))
     fake_names = list(glob.glob('{}/*_sr.png'.format(args.path)))

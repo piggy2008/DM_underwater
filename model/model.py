@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import os
 import model.networks as networks
+from model.style_transfer import VGGPerceptualLoss
 from .base_model import BaseModel
 logger = logging.getLogger('base')
 
@@ -41,6 +42,7 @@ class DDPM(BaseModel):
             self.log_dict = OrderedDict()
         self.load_network()
         self.print_network()
+        self.style_loss = VGGPerceptualLoss().to(self.device)
 
     def feed_data(self, data):
         self.data = self.set_device(data)
@@ -57,15 +59,38 @@ class DDPM(BaseModel):
         # set log
         self.log_dict['l_pix'] = l_pix.item()
 
+    def finetune_parameters(self):
+        self.optG.zero_grad()
+        # l_pix = self.netG(self.data)
+        # need to average in multi-gpu
+        b, c, h, w = self.data['HR'].shape
+        # l_pix = l_pix.sum()/int(b*c*h*w)
+        if isinstance(self.netG, nn.DataParallel):
+            self.SR = self.netG.module.fine_tune(self.data)
+        else:
+            self.SR = self.netG.fine_tune(self.data)
+        # l_pix = self.netG.loss_func(self.data['HR'], self.SR)
+        # l_pix = l_pix.sum() / int(b * c * h * w)
+        if len(self.SR.shape) == 3:
+            self.SR = torch.reshape(self.SR, (b, c, h, w))
+        content_loss, style_loss = self.style_loss(self.SR, self.data['SR'], self.data['style'])
+        # print('content:', content_loss, ' style:', style_loss)
+        l_pix = content_loss + 100000 * style_loss
+        l_pix.backward()
+        self.optG.step()
+
+        # set log
+        self.log_dict['l_pix'] = l_pix.item()
+
     def test(self, continous=False):
         self.netG.eval()
         with torch.no_grad():
             if isinstance(self.netG, nn.DataParallel):
                 self.SR = self.netG.module.super_resolution(
-                    self.data['SR'], continous)
+                    self.data, continous)
             else:
                 self.SR = self.netG.super_resolution(
-                    self.data['SR'], continous)
+                    self.data, continous)
         self.netG.train()
 
     def sample(self, batch_size=1, continous=False):
