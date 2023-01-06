@@ -6,6 +6,7 @@ import torch.nn as nn
 import os
 import model.networks as networks
 from model.style_transfer import VGGPerceptualLoss
+from .ddpm_trans_modules.discriminator import D2
 from .base_model import BaseModel
 logger = logging.getLogger('base')
 
@@ -15,14 +16,21 @@ class DDPM(BaseModel):
         super(DDPM, self).__init__(opt)
         # define network and load pretrained models
         self.netG = self.set_device(networks.define_G(opt))
+        # self.netG_air = self.set_device(networks.define_G(opt))
+        # self.dis_water = self.set_device(D2())
+        # self.dis_air = self.set_device(D2())
         self.schedule_phase = None
 
         # set loss and load resume state
         self.set_loss()
+        self.loss_func = nn.L1Loss(reduction='sum').to(self.device)
         self.set_new_noise_schedule(
             opt['model']['beta_schedule']['train'], schedule_phase='train')
         if self.opt['phase'] == 'train':
             self.netG.train()
+            # self.netG_air.train()
+            # self.dis_water.train()
+            # self.dis_air.train()
             # find the parameters to optimize
             if opt['model']['finetune_norm']:
                 optim_params = []
@@ -36,20 +44,37 @@ class DDPM(BaseModel):
                             'Params [{:s}] initialized to 0 and will optimize.'.format(k))
             else:
                 optim_params = list(self.netG.parameters())
+                # optim_params = list(self.netG.parameters()) + list(self.netG_air.parameters())
+                # optim_params_dis = list(self.dis_air.parameters()) + list(self.dis_water.parameters())
 
             self.optG = torch.optim.Adam(
                 optim_params, lr=opt['train']["optimizer"]["lr"])
+            # self.optD = torch.optim.Adam(
+            #     optim_params_dis, lr=opt['train']["optimizer"]["lr"])
             self.log_dict = OrderedDict()
         self.load_network()
         self.print_network()
-        self.style_loss = VGGPerceptualLoss().to(self.device)
+        # self.style_loss = VGGPerceptualLoss().to(self.device)
+
+    def set_requires_grad(self, nets, requires_grad=False):
+        """Set requies_grad=Fasle for all the networks to avoid unnecessary computations
+        Parameters:
+            nets (network list)   -- a list of networks
+            requires_grad (bool)  -- whether the networks require gradients or not
+        """
+        if not isinstance(nets, list):
+            nets = [nets]
+        for net in nets:
+            if net is not None:
+                for param in net.parameters():
+                    param.requires_grad = requires_grad
 
     def feed_data(self, data):
         self.data = self.set_device(data)
 
     def optimize_parameters(self):
         self.optG.zero_grad()
-        l_pix = self.netG(self.data)
+        l_pix = self.netG(self.data, 'air')
         # need to average in multi-gpu
         b, c, h, w = self.data['HR'].shape
         l_pix = l_pix.sum()/int(b*c*h*w)
@@ -58,6 +83,129 @@ class DDPM(BaseModel):
 
         # set log
         self.log_dict['l_pix'] = l_pix.item()
+
+    # def optimize_parameters(self):
+    #     real_air = self.data['style']
+    #     real_water = self.data['SR']
+    #
+    #     b, c, h, w = real_water.shape
+    #     self.data['HR'] = real_water
+    #     x_recon, noise, x_recover_fake_air = self.netG(self.data, 'air')
+    #     self.data['HR'] = x_recover_fake_air
+    #     x_recon2, noise2, reconst_water = self.netG_air(self.data, 'water')
+    #
+    #     self.data['HR'] = real_air
+    #     x_recon3, noise3, x_recover_fake_water = self.netG_air(self.data, 'water')
+    #     self.data['HR'] = x_recover_fake_water
+    #     x_recon4, noise4, reconst_air = self.netG(self.data, 'air')
+    #
+    #     l_pix = self.loss_func(x_recon, noise)
+    #     l_pix2 = self.loss_func(x_recon2, noise2)
+    #     l_pix3 = self.loss_func(x_recon3, noise3)
+    #     l_pix4 = self.loss_func(x_recon4, noise4)
+    #     l_pix = 0.25 * (l_pix + l_pix2 + l_pix3 + l_pix4)
+    #     l_pix = l_pix.sum() / int(b * c * h * w)
+    #     # print(l_pix)
+    #     self.set_requires_grad([self.dis_air, self.dis_water], False)
+    #     self.optG.zero_grad()
+    #     out = self.dis_air(x_recover_fake_air)
+    #     g_loss = torch.mean((out - 1) ** 2)
+    #     out2 = self.dis_water(x_recover_fake_water)
+    #     g_loss2 = torch.mean((out2 - 1) ** 2)
+    #     g_rec_loss = torch.mean((real_water - reconst_water) ** 2)
+    #     g_rec_loss2 = torch.mean((real_air - reconst_air) ** 2)
+    #     g_total = 0.25 * (g_loss + g_loss2 + 4 * g_rec_loss + 4 * g_rec_loss2) + l_pix
+    #     # print(g_total)
+    #     g_total.backward()
+    #     self.optG.step()
+    #
+    #     self.set_requires_grad([self.dis_air, self.dis_water], True)
+    #     self.optD.zero_grad()
+    #
+    #     out_real = self.dis_air(real_air)
+    #     d1_loss_real = torch.mean((out_real - 1) ** 2)
+    #     x_recover_fake_air2 = x_recover_fake_air.detach()
+    #     out_fake = self.dis_air(x_recover_fake_air2)
+    #     d1_loss_fake = torch.mean(out_fake ** 2)
+    #     d1_total = (d1_loss_real + d1_loss_fake) * 0.5
+    #     d1_total.backward()
+    #
+    #     out2_real = self.dis_water(real_water)
+    #     d2_loss_real = torch.mean((out2_real - 1) ** 2)
+    #     x_recover_fake_water2 = x_recover_fake_water.detach()
+    #     out2_fake = self.dis_water(x_recover_fake_water2)
+    #     d2_loss_fake = torch.mean(out2_fake ** 2)
+    #     d2_total = (d2_loss_real + d2_loss_fake) * 0.5
+    #     d2_total.backward()
+    #     self.optD.step()
+    #
+    #
+    #     # # ----------------- train D ----------------
+    #     # self.optG.zero_grad()
+    #     # self.optD.zero_grad()
+    #     # out = self.dis_air(self.data['style'])
+    #     # d1_loss = torch.mean((out - 1) ** 2)
+    #     # out2 = self.dis_water(self.data['SR'])
+    #     # d2_loss = torch.mean((out2 - 1) ** 2)
+    #     # d_real_loss = d1_loss + d2_loss
+    #     # d_real_loss.backward()
+    #     # self.optD.step()
+    #     #
+    #     # self.optG.zero_grad()
+    #     # self.optD.zero_grad()
+    #     # x_recon, noise, x_recover_fake_air = self.netG(self.data, 'air')
+    #     # l_pix = self.loss_func(x_recon, noise)
+    #     # out = self.dis_air(x_recover_fake_air)
+    #     # d1_loss = torch.mean(out ** 2)
+    #     #
+    #     # x_recon, noise, x_recover_fake_water = self.netG_air(self.data, 'water')
+    #     # l_pix = self.loss_func(x_recon, noise)
+    #     # out2 = self.dis_air(x_recover_fake_water)
+    #     # d2_loss = torch.mean(out2 ** 2)
+    #     # d_fake_loss = d1_loss + d2_loss
+    #     # d_fake_loss.backward()
+    #     # self.optD.step()
+    #     #
+    #     # # ----------------- train G ----------------
+    #     # self.optG.zero_grad()
+    #     # self.optD.zero_grad()
+    #     # real_water = self.data['SR']
+    #     # x_recon, noise, x_recover_fake_air = self.netG(self.data, 'air')
+    #     # l_pix = self.loss_func(x_recon, noise)
+    #     # out = self.dis_air(x_recover_fake_air)
+    #     # self.data['SR'] = x_recover_fake_air
+    #     # x_recon, noise, reconst_water = self.netG_air(self.data, 'water')
+    #     # # need to average in multi-gpu
+    #     # l_pix2 = self.loss_func(x_recon, noise)
+    #     # g_loss = torch.mean((out - 1) ** 2)
+    #     # g_loss += torch.mean((real_water - reconst_water) ** 2)
+    #     # b, c, h, w = self.data['HR'].shape
+    #     # l_pix = l_pix.sum()/int(b*c*h*w) + 0.1 * g_loss
+    #     # l_pix.backward(retain_graph=True)
+    #     # self.optG.step()
+    #     #
+    #     #
+    #     # self.optG.zero_grad()
+    #     # self.optD.zero_grad()
+    #     # real_air = self.data['style']
+    #     # x_recon, noise, x_recover_fake_water = self.netG_air(self.data, 'water')
+    #     # l_pix3 = self.loss_func(x_recon, noise)
+    #     # out = self.dis_water(x_recover_fake_water)
+    #     # self.data['style'] = x_recover_fake_water
+    #     # x_recon, noise, reconst_air = self.netG(self.data, 'air')
+    #     # l_pix4 = self.loss_func(x_recon, noise)
+    #     #
+    #     # g_loss = torch.mean((out - 1) ** 2)
+    #     # g_loss += torch.mean((real_air - reconst_air) ** 2)
+    #     # b, c, h, w = self.data['HR'].shape
+    #     # l_pix3 = l_pix3.sum() / int(b * c * h * w) + 0.1 * g_loss
+    #     # l_pix3.backward()
+    #     # self.optG.step()
+    #
+    #     # set log
+    #     self.log_dict['l_pix'] = l_pix.item()
+    #     self.log_dict['g_total'] = (g_total - l_pix).item()
+    #     self.log_dict['d1_total'] = d1_total.item()
 
     def finetune_parameters(self):
         self.optG.zero_grad()
@@ -81,6 +229,7 @@ class DDPM(BaseModel):
 
         # set log
         self.log_dict['l_pix'] = l_pix.item()
+
 
     def test(self, continous=False):
         self.netG.eval()
@@ -108,6 +257,11 @@ class DDPM(BaseModel):
         else:
             self.netG.set_loss(self.device)
 
+        # if isinstance(self.netG_air, nn.DataParallel):
+        #     self.netG_air.module.set_loss(self.device)
+        # else:
+        #     self.netG_air.set_loss(self.device)
+
     def set_new_noise_schedule(self, schedule_opt, schedule_phase='train'):
         if self.schedule_phase is None or self.schedule_phase != schedule_phase:
             self.schedule_phase = schedule_phase
@@ -116,6 +270,12 @@ class DDPM(BaseModel):
                     schedule_opt, self.device)
             else:
                 self.netG.set_new_noise_schedule(schedule_opt, self.device)
+
+            # if isinstance(self.netG_air, nn.DataParallel):
+            #     self.netG_air.module.set_new_noise_schedule(
+            #         schedule_opt, self.device)
+            # else:
+            #     self.netG_air.set_new_noise_schedule(schedule_opt, self.device)
 
     def get_current_log(self):
         return self.log_dict

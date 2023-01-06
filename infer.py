@@ -8,6 +8,7 @@ import core.metrics as Metrics
 from core.wandb_logger import WandbLogger
 from tensorboardX import SummaryWriter
 import os
+import time
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -67,7 +68,10 @@ if __name__ == "__main__":
     for _,  val_data in enumerate(val_loader):
         idx += 1
         diffusion.feed_data(val_data)
+        start = time.time()
         diffusion.test(continous=True)
+        end = time.time()
+        print('Execution time:', (end - start), 'seconds')
         visuals = diffusion.get_current_visuals(need_LR=False)
 
         hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
