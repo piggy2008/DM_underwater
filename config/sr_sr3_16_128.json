@@ -9,8 +9,8 @@
         "tb_logger": "tb_logger",
         "results": "results",
         "checkpoint": "checkpoint",
-        "resume_state": null
-//         "resume_state": "experiments/sr_ffhq_221122_205554/checkpoint/I1000000_E1334" //pretrain model or training state
+//        "resume_state": null
+         "resume_state": "experiments/sr_ffhq_221122_205554/checkpoint/I1000000_E1334" //pretrain model or training state
     },
     "datasets": {
         "train": {
@@ -78,9 +78,9 @@
     },
     "train": {
         "n_iter": 1200000,
-        "val_freq": 100000,
-        "save_checkpoint_freq": 100000,
-        "print_freq": 10,
+        "val_freq": 1000,
+        "save_checkpoint_freq": 1000,
+        "print_freq": 1000,
         "optimizer": {
             "type": "adam",
             "lr": 1e-4
