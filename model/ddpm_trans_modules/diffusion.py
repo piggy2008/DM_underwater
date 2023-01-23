@@ -266,7 +266,7 @@ class GaussianDiffusion(nn.Module):
 
         return x_prev
 
-    @torch.no_grad()
+    # @torch.no_grad()
     def p_sample_ddim2(self, x, t, t_next, clip_denoised=True, repeat_noise=False, condition_x=None, style=None):
         b, *_, device = *x.shape, x.device
         bt = extract(self.betas, t, x.shape)
@@ -295,7 +295,7 @@ class GaussianDiffusion(nn.Module):
     @torch.no_grad()
     def p_sample_loop(self, x_in, continous=False):
         device = self.betas.device
-        sample_inter = 100
+        sample_inter = 10
 
         if not self.conditional:
             shape = x_in
@@ -326,14 +326,16 @@ class GaussianDiffusion(nn.Module):
                 # step = 100
                 c = 50
                 num_timesteps_ddim = np.asarray(list(range(0, self.num_timesteps, c)))
+                # num_timesteps_ddim = np.array([0, 333, 666, 1000, 1143, 1286, 1429, 1572, 1715, 1858]) # piece-wise
+                # num_timesteps_ddim = np.array([0, 245, 521, 1052, 1143, 1286, 1475, 1587, 1765, 1859]) # searching
                 time_steps = np.flip(num_timesteps_ddim)
-                for i in tqdm(time_steps, desc='sampling loop time step', total=len(time_steps)):
-                    print('i = ', i)
+                for j, i in enumerate(tqdm(time_steps, desc='sampling loop time step', total=len(time_steps))):
+                    # print('i = ', i)
                     t = torch.full((b,), i, device=device, dtype=torch.long)
-                    if (i - c) >= 0:
-                        t_next = torch.full((b,), i - c, device=device, dtype=torch.long)
-                    else:
+                    if j == len(time_steps) - 1:
                         t_next = None
+                    else:
+                        t_next = torch.full((b,), time_steps[j + 1], device=device, dtype=torch.long)
                     img = self.p_sample_ddim2(img, t, t_next, condition_x=x, style=x_in['style'])
                     if i % sample_inter == 0:
                         ret_img = torch.cat([ret_img, img], dim=0)
@@ -389,23 +391,41 @@ class GaussianDiffusion(nn.Module):
                     ret_img = torch.cat([ret_img, img], dim=0)
             return img
         else:
-            skip_step = 6
-            seq_train = np.linspace(0, 1, skip_step) * self.num_timesteps
-            seq_train = [int(s) for s in list(seq_train)]
-            seq_train[-1] = seq_train[-1] - 1
+            # skip_step = 6
+            # seq_train = np.linspace(0, 1, skip_step) * self.num_timesteps
+            # seq_train = [int(s) for s in list(seq_train)]
+            # seq_train[-1] = seq_train[-1] - 1
             x = x_in['SR']
             shape = x.shape
             b = shape[0]
             img = torch.randn(shape, device=device)
             ret_img = x
-            for i in reversed(range(0, self.num_timesteps)):
-                if i in seq_train:
-                    # print(i)
-                    img = self.p_sample_finetune(img, torch.full(
+            if self.sample_proc == 'ddpm':
+                for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step',
+                              total=self.num_timesteps):
+                    # print('i = ', i)
+                    img = self.p_sample(img, torch.full(
                         (b,), i, device=device, dtype=torch.long), condition_x=x, style=x_in['style'])
-
-                if i % sample_inter == 0:
-                    ret_img = torch.cat([ret_img, img], dim=0)
+                    if i % sample_inter == 0:
+                        ret_img = torch.cat([ret_img, img], dim=0)
+            else:
+                # step = 100
+                c = 400
+                num_timesteps_ddim = np.asarray(list(range(0, self.num_timesteps, c)))
+                # num_timesteps_ddim = np.array([0, 1000, 1858])
+                # num_timesteps_ddim = np.array([0, 333, 666, 1000, 1143, 1286, 1429, 1572, 1715, 1858]) # piece-wise
+                # num_timesteps_ddim = np.array([0, 245, 521, 1052, 1143, 1286, 1475, 1587, 1765, 1859]) # searching
+                time_steps = np.flip(num_timesteps_ddim)
+                for j, i in enumerate(tqdm(time_steps, desc='sampling loop time step', total=len(time_steps))):
+                    # print('i = ', i)
+                    t = torch.full((b,), i, device=device, dtype=torch.long)
+                    if j == len(time_steps) - 1:
+                        t_next = None
+                    else:
+                        t_next = torch.full((b,), time_steps[j + 1], device=device, dtype=torch.long)
+                    img = self.p_sample_ddim2(img, t, t_next, condition_x=x, style=x_in['style'])
+                    if i % sample_inter == 0:
+                        ret_img = torch.cat([ret_img, img], dim=0)
         if continous:
             return ret_img
         else:
@@ -501,8 +521,10 @@ class GaussianDiffusion(nn.Module):
 
         return x_recon, noise, x_0_recover
 
-    def forward(self, x, flag, *args, **kwargs):
-        if flag == 'air':
-            return self.p_losses(x, *args, **kwargs)
-        else:
-            return self.p_losses2(x, *args, **kwargs)
+    # def forward(self, x, flag, *args, **kwargs):
+    #     if flag == 'air':
+    #         return self.p_losses(x, *args, **kwargs)
+    #     else:
+    #         return self.p_losses2(x, *args, **kwargs)
+    def forward(self, x, continous=False, *args, **kwargs):
+        return self.p_sample_loop_finetune(x, continous)

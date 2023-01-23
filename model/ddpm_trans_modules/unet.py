@@ -269,10 +269,10 @@ class UNet(nn.Module):
             nn.Conv2d(int(dim * 2 ** 2), int(dim * 2 ** 2) // 2, kernel_size=3, stride=1, padding=1),
             nn.PixelUnshuffle(2))
 
-        self.block1 = ResnetBloc_da(dim=dim, dim_out=dim, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=False)
+        self.block1 = ResnetBlocWithAttn(dim=dim, dim_out=dim, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=False)
         self.block2 = ResnetBloc_da(dim=dim*2**1, dim_out=dim*2**1, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=True)
         self.block3 = ResnetBloc_da(dim=dim*2**2, dim_out=dim*2**2, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=True)
-        self.block4 = ResnetBloc_da(dim=dim*2**3, dim_out=dim*2**3, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=True)
+        self.block4 = ResnetBloc_norm(dim=dim*2**3, dim_out=dim*2**3, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=True)
 
         self.conv_up3 = nn.Sequential(
             nn.Conv2d((dim * 2 ** 3), (dim * 2 ** 3) * 2, kernel_size=3, stride=1, padding=1, bias=False),
@@ -288,14 +288,14 @@ class UNet(nn.Module):
         self.conv_cat3 = nn.Conv2d(int(dim * 2 ** 3), int(dim * 2 ** 2), kernel_size=1, bias=False)
         self.conv_cat2 = nn.Conv2d(int(dim * 2 ** 2), int(dim * 2 ** 1), kernel_size=1, bias=False)
 
-        self.decoder_block3 = ResnetBloc_da(dim=dim*2**2, dim_out=dim*2**2, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=False)
+        self.decoder_block3 = ResnetBlocWithAttn(dim=dim*2**2, dim_out=dim*2**2, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=False)
         self.decoder_block2 = ResnetBloc_da(dim=dim*2**1, dim_out=dim*2**1, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=True)
         self.decoder_block1 = ResnetBloc_da(dim=dim*2**1, dim_out=dim*2**1, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=True)
 
-        self.refine = ResnetBloc_da(dim=dim*2**1, dim_out=dim*2**1, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=True)
+        self.refine = ResnetBloc_norm(dim=dim*2**1, dim_out=dim*2**1, time_emb_dim=time_dim, norm_groups=norm_groups, with_attn=True)
         self.de_predict = nn.Sequential(nn.Conv2d(dim * 2 ** 1, out_channel, kernel_size=1, stride=1))
 
-        # self.style_extractor = StyleFeatures(dim=dim)
+        self.style_extractor = StyleFeatures(dim=dim)
         # self.fuse_feat1 = nn.Conv2d(dim * 2, dim, kernel_size=1, bias=False)
         # self.fuse_feat2 = nn.Conv2d(int(dim*2**1) * 2, int(dim*2**1), kernel_size=1, bias=False)
         # self.fuse_feat3 = nn.Conv2d(int(dim*2**2) * 2, int(dim*2**2), kernel_size=1, bias=False)
@@ -400,3 +400,5 @@ if __name__ == '__main__':
     output = model(img, time, style_img)
     # output = model2(img)
     print(output.shape)
+    total = sum([param.nelement() for param in model.parameters()])
+    print('parameter: %.2fM' % (total / 1e6))
