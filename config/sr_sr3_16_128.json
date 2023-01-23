@@ -80,7 +80,7 @@
         "n_iter": 1200000,
         "val_freq": 1000,
         "save_checkpoint_freq": 1000,
-        "print_freq": 1000,
+        "print_freq": 50,
         "optimizer": {
             "type": "adam",
             "lr": 1e-4
