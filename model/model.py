@@ -212,14 +212,14 @@ class DDPM(BaseModel):
         real_water = self.data['SR']
 
         # b, c, h, w = real_water.shape
-        self.data['HR'] = real_water
+        self.data['SR'] = real_water
         x_recover_fake_air = self.netG(self.data)
-        self.data['HR'] = x_recover_fake_air
+        self.data['SR'] = x_recover_fake_air
         reconst_water = self.netG_air(self.data)
 
-        self.data['HR'] = real_air
+        self.data['SR'] = real_air
         x_recover_fake_water = self.netG_air(self.data)
-        self.data['HR'] = x_recover_fake_water
+        self.data['SR'] = x_recover_fake_water
         reconst_air = self.netG(self.data)
 
         # print(l_pix)

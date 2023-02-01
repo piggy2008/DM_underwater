@@ -92,6 +92,9 @@ if __name__ == "__main__":
                 sr_img, '{}/{}_{}_sr_process.png'.format(result_path, current_step, idx))
             Metrics.save_img(
                 Metrics.tensor2img(visuals['SR'][-1]), '{}/{}_{}_sr.png'.format(result_path, current_step, idx))
+            # for i in range(len(visuals['SR'])):
+            #     Metrics.save_img(
+            #         Metrics.tensor2img(visuals['SR'][i]), '{}/{}_{}_sr_{}.png'.format(result_path, current_step, idx, str(i)))
 
         Metrics.save_img(
             hr_img, '{}/{}_{}_hr.png'.format(result_path, current_step, idx))
