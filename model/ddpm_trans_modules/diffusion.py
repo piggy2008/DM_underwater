@@ -417,7 +417,7 @@ class GaussianDiffusion(nn.Module):
                 # num_timesteps_ddim = np.array([0, 333, 666, 1000, 1143, 1286, 1429, 1572, 1715, 1858]) # piece-wise
                 # num_timesteps_ddim = np.array([0, 245, 521, 1052, 1143, 1286, 1475, 1587, 1765, 1859]) # searching
                 time_steps = np.flip(num_timesteps_ddim)
-                for j, i in enumerate(reversed(range(0, time_steps))):
+                for j, i in enumerate(tqdm(time_steps, desc='sampling loop time step', total=len(time_steps))):
                     # print('i = ', i)
                     t = torch.full((b,), i, device=device, dtype=torch.long)
                     if j == len(time_steps) - 1:
