@@ -401,8 +401,9 @@ class GaussianDiffusion(nn.Module):
             img = torch.randn(shape, device=device)
             ret_img = x
             if self.sample_proc == 'ddpm':
-                for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step',
-                              total=self.num_timesteps):
+                # for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step',
+                #               total=self.num_timesteps):
+                for i in reversed(range(0, self.num_timesteps)):
                     # print('i = ', i)
                     img = self.p_sample(img, torch.full(
                         (b,), i, device=device, dtype=torch.long), condition_x=x, style=x_in['style'])
