@@ -88,7 +88,7 @@ if __name__ == "__main__":
                 # print(train_data['SR'].shape)
                 # print(train_data['HR'].shape)
                 # print(train_data['LR'].shape)
-                # diffusion.optimize_parameters()
+                # diffusion.optimize_parameters2()
                 diffusion.finetune_parameters()
                 # log
                 if current_step % opt['train']['print_freq'] == 0:

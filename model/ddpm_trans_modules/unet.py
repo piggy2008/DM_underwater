@@ -304,6 +304,7 @@ class UNet(nn.Module):
     def forward(self, x, time, style_x=None):
         # print(time.shape)
         t = self.time_mlp(time) if exists(self.time_mlp) else None
+        # print(x.shape)
         # print(t.shape)
         # feats = []
 
