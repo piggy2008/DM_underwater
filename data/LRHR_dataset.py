@@ -132,11 +132,11 @@ class LRHRDataset2(Dataset):
     def __getitem__(self, index):
         img_HR = None
         img_LR = None
-        # index_style = np.random.randint(0, self.data_len)
+        index_style = np.random.randint(0, self.data_len)
 
         img_HR = Image.open(self.hr_path[index]).convert("RGB")
         img_SR = Image.open(self.sr_path[index]).convert("RGB")
-        img_style = Image.open(self.style_path[index]).convert("RGB")
+        img_style = Image.open(self.style_path[index_style]).convert("RGB")
         # img_style = Image.open(self.sr_path[index]).convert("RGB")
         if self.need_LR:
             img_LR = Image.open(self.lr_path[index]).convert("RGB")
