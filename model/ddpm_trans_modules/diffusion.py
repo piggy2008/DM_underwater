@@ -469,7 +469,7 @@ class GaussianDiffusion(nn.Module):
         # )
 
     def p_losses(self, x_in, noise=None):
-        x_start = x_in['HR']
+        x_start = x_in['SR']
         [b, c, h, w] = x_start.shape
         t = torch.randint(0, self.num_timesteps, (b,),
                           device=x_start.device).long()
@@ -481,7 +481,7 @@ class GaussianDiffusion(nn.Module):
             x_recon = self.denoise_fn(x_noisy, t)
         else:
             x_recon = self.denoise_fn(
-                torch.cat([x_in['SR'], x_noisy], dim=1), t, x_in['style'])
+                torch.cat([x_in['HR'], x_noisy], dim=1), t, x_in['style'])
 
         x_0_recover = self.q_sample_recover(x_noisy, t, predict_noise=x_recon)
         # x_0_recover2 = x_0_recover.detach()
@@ -491,9 +491,9 @@ class GaussianDiffusion(nn.Module):
         # x_0_recover3 = x_in['style'].detach()
         # x_recover2 = Metrics.tensor2img(x_0_recover3)
         # Metrics.save_img(x_recover2, 'experiments/x0.png')
-        loss = self.loss_func(noise, x_recon)
+        # loss = self.loss_func(noise, x_recon)
 
-        return loss
+        return x_recon, noise, x_0_recover
 
     def p_losses2(self, x_in, noise=None):
         x_start = x_in['style']
@@ -522,10 +522,10 @@ class GaussianDiffusion(nn.Module):
 
         return x_recon, noise, x_0_recover
 
-    # def forward(self, x, flag, *args, **kwargs):
-    #     if flag == 'air':
-    #         return self.p_losses(x, *args, **kwargs)
-    #     else:
-    #         return self.p_losses2(x, *args, **kwargs)
-    def forward(self, x, continous=False, *args, **kwargs):
-        return self.p_sample_loop_finetune(x, continous)
+    def forward(self, x, flag, *args, **kwargs):
+        if flag == 'air':
+            return self.p_losses(x, *args, **kwargs)
+        else:
+            return self.p_losses2(x, *args, **kwargs)
+    # def forward(self, x, continous=False, *args, **kwargs):
+    #     return self.p_sample_loop_finetune(x, continous)

@@ -152,7 +152,9 @@ class UNet(nn.Module):
         inner_channel=32,
         norm_groups=32,
         channel_mults=(1, 2, 4, 8, 8),
-        attn_res=(8),
+        attn_res=[
+                16
+            ],
         res_blocks=3,
         dropout=0,
         with_time_emb=True,
@@ -242,3 +244,15 @@ class UNet(nn.Module):
                 x = layer(x)
 
         return self.final_conv(x)
+
+if __name__ == '__main__':
+    img = torch.zeros(4, 6, 128, 128)
+    style_img = torch.zeros(4, 3, 128, 128)
+    time = torch.tensor([1, 2, 3, 4])
+    model = UNet()
+    # model2 = StyleFeatures()
+    # output = model(img, time, style_img)
+    # output = model2(img)
+    # print(output.shape)
+    total = sum([param.nelement() for param in model.parameters()])
+    print('parameter: %.2fM' % (total / 1e6))
