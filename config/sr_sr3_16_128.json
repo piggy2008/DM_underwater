@@ -9,8 +9,8 @@
         "tb_logger": "tb_logger",
         "results": "results",
         "checkpoint": "checkpoint",
-//        "resume_state": null
-         "resume_state": "experiments/sr_ffhq_221122_205554/checkpoint/I1000000_E1334" //pretrain model or training state
+        "resume_state": null
+//         "resume_state": "experiments/sr_ffhq_221122_205554/checkpoint/I1000000_E1334" //pretrain model or training state
     },
     "datasets": {
         "train": {
@@ -20,7 +20,7 @@
             "datatype": "img", //lmdb or img, path of img files
             "l_resolution": 16, // low resolution need to super_resolution
             "r_resolution": 128, // high resolution
-            "batch_size": 3,
+            "batch_size": 8,
             "num_workers": 1,
             "use_shuffle": true,
             "data_len": -1 // -1 represents all data used in train
@@ -77,10 +77,10 @@
         }
     },
     "train": {
-        "n_iter": 1200000,
-        "val_freq": 1000,
-        "save_checkpoint_freq": 10000,
-        "print_freq": 50,
+        "n_iter": 1000000,
+        "val_freq": 50000,
+        "save_checkpoint_freq": 50000,
+        "print_freq": 100,
         "optimizer": {
             "type": "adam",
             "lr": 1e-4
