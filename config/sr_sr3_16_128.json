@@ -9,8 +9,8 @@
         "tb_logger": "tb_logger",
         "results": "results",
         "checkpoint": "checkpoint",
-        "resume_state": null
-//         "resume_state": "experiments/sr_ffhq_221122_205554/checkpoint/I1000000_E1334" //pretrain model or training state
+//        "resume_state": null
+         "resume_state": "experiments/sr_ffhq_230206_124047/checkpoint/I550000_E997" //pretrain model or training state
     },
     "datasets": {
         "train": {
