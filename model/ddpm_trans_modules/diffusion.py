@@ -111,7 +111,7 @@ class GaussianDiffusion(nn.Module):
         self.denoise_fn = denoise_fn
         self.conditional = conditional
         self.loss_type = loss_type
-        print(teacher_param)
+        # print(teacher_param)
         if teacher_param is not None:
             self.teacher = load_part_of_model2(teacher_model, teacher_param)
         else:
@@ -618,7 +618,6 @@ class GaussianDiffusion(nn.Module):
     def super_resolution(self, x_in, continous=False, cand=None):
         return self.p_sample_loop(x_in, continous, cand=cand)
 
-
     @torch.no_grad()
     def interpolate(self, x1, x2, t=None, lam=0.5):
         b, *_, device = *x1.shape, x1.device
@@ -739,7 +738,6 @@ class GaussianDiffusion(nn.Module):
         #     nq.sqrt(gama) * x_start + nq.sqrt(1-gama)* noise
         # )
 
-
     def p_losses(self, x_in, noise=None):
         x_start = x_in['HR']
         x = x_in['SR']
@@ -836,7 +834,6 @@ class GaussianDiffusion(nn.Module):
         # loss = self.loss_func(noise, x_recon)
 
         return x_recon, noise, x_0_recover
-
     def p_losses_style(self, x_in, noise=None, flag=None):
         x_start = x_in['SR']
         [b, c, h, w] = x_start.shape

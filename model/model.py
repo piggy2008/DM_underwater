@@ -22,6 +22,7 @@ class DDPM(BaseModel):
         # self.netG_air = self.set_device(networks.define_G(opt))
         # self.dis_water = self.set_device(D2())
         # self.dis_air = self.set_device(D2())
+
         self.schedule_phase = None
 
         # set loss and load resume state
@@ -64,7 +65,6 @@ class DDPM(BaseModel):
             self.log_dict = OrderedDict()
         self.load_network()
         self.print_network()
-
 
     def set_requires_grad(self, nets, requires_grad=False):
         """Set requies_grad=Fasle for all the networks to avoid unnecessary computations
@@ -173,7 +173,6 @@ class DDPM(BaseModel):
                 #     self.data, continous, flag='style', n=n)
                 self.SR = self.netG.super_resolution(
                     self.data, continous, cand=cand)
-
         self.netG.train()
 
     def sample(self, batch_size=1, continous=False):

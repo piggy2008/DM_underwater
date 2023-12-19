@@ -93,7 +93,6 @@ class Compute_z(nn.Module):
         s_dist = Independent(Normal(loc=s_mu, scale=torch.exp(s_log_sigma)), 1)
         return u_dist, s_dist, u_mu, s_mu, torch.exp(u_log_sigma), torch.exp(s_log_sigma)
 
-
 class TimeEmbedding(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -383,7 +382,6 @@ class Encoder(nn.Module):
         self.block3_zero_control = nn.Sequential(zero_module(nn.Conv2d(dim * 2 ** 2, dim * 2 ** 2, 3, padding=1)))
         self.block4_zero_control = nn.Sequential(zero_module(nn.Conv2d(dim * 2 ** 3, dim * 2 ** 3, 3, padding=1)))
 
-
         self.conv_up3 = nn.Sequential(
             nn.Conv2d((dim * 2 ** 3), (dim * 2 ** 3) * 2, kernel_size=3, stride=1, padding=1, bias=False),
             nn.PixelShuffle(2))
@@ -615,3 +613,4 @@ if __name__ == '__main__':
     # print(b)
     # total = sum([param.nelement() for param in model.parameters()])
     # print('parameter: %.2fM' % (total / 1e6))
+
