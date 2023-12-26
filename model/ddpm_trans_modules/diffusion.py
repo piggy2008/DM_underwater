@@ -409,7 +409,8 @@ class GaussianDiffusion(nn.Module):
                     t_next = None
                 else:
                     t_next = torch.full((b,), time_steps[j + 1], device=device, dtype=torch.long)
-                style = self.q_sample(x_in['style'], t, img0)
+                # style = self.q_sample(x_in['style'], t, img0)
+                style = x_in['style']
                 img = self.p_sample_ddim2(img, t, t_next, style=style)
                 if i % sample_inter == 0:
                     ret_img = torch.cat([ret_img, img], dim=0)
@@ -754,7 +755,7 @@ class GaussianDiffusion(nn.Module):
 
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
-        x_noisy_style = self.q_sample(x_start=x_style, t=t, noise=noise)
+        # x_noisy_style = self.q_sample(x_start=x_style, t=t, noise=noise)
         src_txt_inputs, target_txt_inputs = generate_src_target_txt(labels)
         context = self.clip_embedding.encode(target_txt_inputs)
         if self.teacher is not None:
@@ -768,8 +769,7 @@ class GaussianDiffusion(nn.Module):
             x_recon = self.denoise_fn(x_noisy, t)
         else:
             x_recon = self.denoise_fn(
-                torch.cat([condition_x, x_noisy], dim=1), t,
-                x_noisy_style, context)
+                torch.cat([condition_x, x_noisy], dim=1), t, x_style, context)
 
         # x_0_recover = self.q_sample_recover(x_noisy, t, predict_noise=x_recon)
         # x_0_recover_style = self.q_sample_recover(x_noisy_style, t, predict_noise=x_recon_teacher)
