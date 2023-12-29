@@ -6,6 +6,7 @@ from inspect import isfunction
 from functools import partial
 import numpy as np
 from tqdm import tqdm
+
 from model.utils import load_part_of_model2
 
 
@@ -93,7 +94,6 @@ class GaussianDiffusion(nn.Module):
         self.conditional = conditional
         self.loss_type = loss_type
         self.eta = 0
-
 
         if schedule_opt is not None:
             pass
