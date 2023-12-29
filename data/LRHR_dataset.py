@@ -37,6 +37,7 @@ def color_filter(image):
     result_neg = cv2.bitwise_and(img_SR_gray, img_SR_gray, mask=neg_full_mask)
     return result_neg + result[:, :, ::-1]
 
+
 class LRHRDataset(Dataset):
     def __init__(self, dataroot, datatype, l_resolution=16, r_resolution=128, split='train', data_len=-1, need_LR=False):
         self.datatype = datatype
