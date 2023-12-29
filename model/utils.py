@@ -1,5 +1,5 @@
 import torch
-
+from model.ddpm_trans_modules.unet import UNet
 
 categories = ['fish', 'marine life', 'coral', 'rock', 'diving', 'deep see',
                       'wreckage', 'sculpture', 'caves', 'underwater stuff']
@@ -76,6 +76,14 @@ def load_part_of_model3(new_model, src_model_path):
             print('loading control:', k)
             k2 = k.replace('encoder_water.block4', 'encoder_water.block4_control')
             m_dict[k2].data = param
+        elif (k.find('encoder_water.conv1') > -1):
+            print('loading input channel:', k)
+            print(param.shape)
+            param_temp = torch.zeros_like(m_dict[k].data)
+            param_temp[:, 0, :, :] = param[:, 0, :, :]
+            param_temp[:, 1, :, :] = param[:, 0, :, :]
+            param_temp[:, 2:, :, :] = param
+            m_dict[k].data = param_temp
         else:
             if param.shape == m_dict[k].data.shape:
                 m_dict[k].data = param
@@ -115,6 +123,8 @@ def load_part_of_model4(new_model, src_model_path):
                 print('loading extra layer:', k)
     new_model.load_state_dict(m_dict)
     return new_model
+
+
 
 
 

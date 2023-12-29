@@ -3,7 +3,6 @@ import logging
 import torch
 import torch.nn as nn
 from torch.nn import init
-
 logger = logging.getLogger('base')
 ####################
 # initialize
@@ -117,6 +116,7 @@ def define_G(opt):
                 res_blocks=model_opt['unet']['res_blocks'],
                 dropout=model_opt['unet']['dropout'],
                 image_size=model_opt['diffusion']['image_size'])
+
     netG = diffusion.GaussianDiffusion(
         model,
         image_size=model_opt['diffusion']['image_size'],
@@ -130,6 +130,7 @@ def define_G(opt):
     # if opt['phase'] == 'train':
     #     # init_weights(netG, init_type='kaiming', scale=0.1)
     #     init_weights(netG, init_type='orthogonal')
+
     if opt['gpu_ids'] and opt['distributed']:
         assert torch.cuda.is_available()
         netG = nn.DataParallel(netG)

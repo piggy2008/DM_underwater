@@ -111,7 +111,7 @@ class GaussianDiffusion(nn.Module):
         self.denoise_fn = denoise_fn
         self.conditional = conditional
         self.loss_type = loss_type
-        print(teacher_param)
+        # print(teacher_param)
         if teacher_param is not None:
             self.teacher = load_part_of_model2(teacher_model, teacher_param)
         else:
@@ -409,7 +409,8 @@ class GaussianDiffusion(nn.Module):
                     t_next = None
                 else:
                     t_next = torch.full((b,), time_steps[j + 1], device=device, dtype=torch.long)
-                style = self.q_sample(x_in['style'], t, img0)
+                # style = self.q_sample(x_in['style'], t, img0)
+                style = x_in['style']
                 img = self.p_sample_ddim2(img, t, t_next, style=style)
                 if i % sample_inter == 0:
                     ret_img = torch.cat([ret_img, img], dim=0)
@@ -418,7 +419,8 @@ class GaussianDiffusion(nn.Module):
             x = x_in['SR']
             labels = x_in['label']
             ret_img = x
-            condition_x = torch.mean(x, dim=1, keepdim=True)
+            # condition_x = torch.mean(x, dim=1, keepdim=True)
+            condition_x = x
             shape = x.shape
             b = shape[0]
             img = torch.randn(shape, device=device)
@@ -618,7 +620,6 @@ class GaussianDiffusion(nn.Module):
     def super_resolution(self, x_in, continous=False, cand=None):
         return self.p_sample_loop(x_in, continous, cand=cand)
 
-
     @torch.no_grad()
     def interpolate(self, x1, x2, t=None, lam=0.5):
         b, *_, device = *x1.shape, x1.device
@@ -739,13 +740,13 @@ class GaussianDiffusion(nn.Module):
         #     nq.sqrt(gama) * x_start + nq.sqrt(1-gama)* noise
         # )
 
-
     def p_losses(self, x_in, noise=None):
         x_start = x_in['HR']
         x = x_in['SR']
         x_style = x_in['style']
         labels = x_in['label']
-        condition_x = torch.mean(x, dim=1, keepdim=True)
+        condition_x = x
+        # condition_x = torch.mean(x, dim=1, keepdim=True)
         ##### use mask to extract foreground #########
         # x_style = torch.mean(x_style, dim=1, keepdim=True)
         # x_mask = (x_style + 1) / 2
@@ -756,7 +757,7 @@ class GaussianDiffusion(nn.Module):
 
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
-        x_noisy_style = self.q_sample(x_start=x_style, t=t, noise=noise)
+        # x_noisy_style = self.q_sample(x_start=x_style, t=t, noise=noise)
         src_txt_inputs, target_txt_inputs = generate_src_target_txt(labels)
         context = self.clip_embedding.encode(target_txt_inputs)
         if self.teacher is not None:
@@ -770,8 +771,7 @@ class GaussianDiffusion(nn.Module):
             x_recon = self.denoise_fn(x_noisy, t)
         else:
             x_recon = self.denoise_fn(
-                torch.cat([condition_x, x_noisy], dim=1), t,
-                x_noisy_style, context)
+                torch.cat([condition_x, x_noisy], dim=1), t, x_style, context)
 
         # x_0_recover = self.q_sample_recover(x_noisy, t, predict_noise=x_recon)
         # x_0_recover_style = self.q_sample_recover(x_noisy_style, t, predict_noise=x_recon_teacher)
@@ -836,7 +836,6 @@ class GaussianDiffusion(nn.Module):
         # loss = self.loss_func(noise, x_recon)
 
         return x_recon, noise, x_0_recover
-
     def p_losses_style(self, x_in, noise=None, flag=None):
         x_start = x_in['SR']
         [b, c, h, w] = x_start.shape

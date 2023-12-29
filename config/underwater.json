@@ -43,7 +43,7 @@
         "which_model_G": "trans", // use the ddpm or sr3 network structure
         "finetune_norm": false,
         "unet": {
-            "in_channel": 4,
+            "in_channel": 6,
             "out_channel": 3,
             "inner_channel": 48,
             "norm_groups": 24,

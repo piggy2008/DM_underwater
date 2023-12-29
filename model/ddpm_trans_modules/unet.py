@@ -93,7 +93,6 @@ class Compute_z(nn.Module):
         s_dist = Independent(Normal(loc=s_mu, scale=torch.exp(s_log_sigma)), 1)
         return u_dist, s_dist, u_mu, s_mu, torch.exp(u_log_sigma), torch.exp(s_log_sigma)
 
-
 class TimeEmbedding(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -378,11 +377,10 @@ class Encoder(nn.Module):
         # self.cross_att32_control = SpatialTransformer(dim * 2 ** 2, 1, dim * 2 ** 2)
         # self.cross_att42_control = SpatialTransformer(dim * 2 ** 3, 1, dim * 2 ** 3)
 
-        self.block1_zero_control = nn.Sequential(zero_module(nn.Conv2d(dim, dim, 3, padding=1)))
-        self.block2_zero_control = nn.Sequential(zero_module(nn.Conv2d(dim * 2 ** 1, dim * 2 ** 1, 3, padding=1)))
-        self.block3_zero_control = nn.Sequential(zero_module(nn.Conv2d(dim * 2 ** 2, dim * 2 ** 2, 3, padding=1)))
-        self.block4_zero_control = nn.Sequential(zero_module(nn.Conv2d(dim * 2 ** 3, dim * 2 ** 3, 3, padding=1)))
-
+        # self.block1_zero_control = nn.Sequential(zero_module(nn.Conv2d(dim, dim, 3, padding=1)))
+        # self.block2_zero_control = nn.Sequential(zero_module(nn.Conv2d(dim * 2 ** 1, dim * 2 ** 1, 3, padding=1)))
+        # self.block3_zero_control = nn.Sequential(zero_module(nn.Conv2d(dim * 2 ** 2, dim * 2 ** 2, 3, padding=1)))
+        # self.block4_zero_control = nn.Sequential(zero_module(nn.Conv2d(dim * 2 ** 3, dim * 2 ** 3, 3, padding=1)))
 
         self.conv_up3 = nn.Sequential(
             nn.Conv2d((dim * 2 ** 3), (dim * 2 ** 3) * 2, kernel_size=3, stride=1, padding=1, bias=False),
@@ -408,6 +406,13 @@ class Encoder(nn.Module):
         # self.cross_att1_de = SpatialTransformer(dim * 2 ** 1, 1, dim * 2 ** 1, context_dim=768)
         self.cross_att2_de = SpatialTransformer(dim * 2 ** 1, 1, dim * 2 ** 1, context_dim=768)
         self.cross_att3_de = SpatialTransformer(dim * 2 ** 2, 1, dim * 2 ** 2, context_dim=768)
+
+        ########## style transfer ##########
+        # self.compute_z_water = Compute_z(32, input_dim=dim * 2 ** 1)
+        # self.compute_z_air = Compute_z(32, input_dim=dim * 2 ** 1)
+        # self.conv_u = nn.Conv2d(32, dim * 2 ** 1, kernel_size=1, padding=0)
+        # self.conv_s = nn.Conv2d(32, dim * 2 ** 1, kernel_size=1, padding=0)
+        # self.AdaIN = nn.InstanceNorm2d(dim * 2 ** 1)
 
     def forward(self, x, t, style, context):
         x_style = self.input_hint_block(style)
@@ -448,19 +453,19 @@ class Encoder(nn.Module):
         # x_context4 = self.cross_att4_control(x_context4, context)
         # x_context4 = self.cross_att42_control(x_context4, x4)
 
-        x_context1_de = self.block1_zero_control(x_context1)
-        x_context2_de = self.block2_zero_control(x_context2)
-        x_context3_de = self.block3_zero_control(x_context3)
-        x_context4_de = self.block4_zero_control(x_context4)
+        # x_context1_de = self.block1_zero_control(x_context1)
+        # x_context2_de = self.block2_zero_control(x_context2)
+        # x_context3_de = self.block3_zero_control(x_context3)
+        # x_context4_de = self.block4_zero_control(x_context4)
 
         ######## decoder forward ##########
-        x4 = AdaIn(x4, x_context4_de)
+        x4 = AdaIn(x4, x_context4)
         # x4 = x4 + x_context4_de
         de_level3 = self.conv_up3(x4)
         de_level3 = torch.cat([de_level3, x3], 1)
         de_level3 = self.conv_cat3(de_level3)
 
-        de_level3 = AdaIn(de_level3, x_context3_de)
+        de_level3 = AdaIn(de_level3, x_context3)
         # de_level3 = de_level3 + x_context3_de
         de_level3 = self.decoder_block3(de_level3, t)
         de_level3 = self.cross_att3_de(de_level3, context)
@@ -468,22 +473,64 @@ class Encoder(nn.Module):
         de_level2 = torch.cat([de_level2, x2], 1)
         de_level2 = self.conv_cat2(de_level2)
 
-        de_level2 = AdaIn(de_level2, x_context2_de)
+        de_level2 = AdaIn(de_level2, x_context2)
         # de_level2 = de_level2 + x_context2_de
         de_level2 = self.decoder_block2(de_level2, t)
         de_level2 = self.cross_att2_de(de_level2, context)
         de_level1 = self.conv_up1(de_level2)
 
-        de_level1 = AdaIn(de_level1, x_context1_de)
+        de_level1 = AdaIn(de_level1, x_context1)
         # de_level1 = de_level1 + x_context1_de
         de_level1 = torch.cat([de_level1, x1], 1)
 
         mid_feat = self.decoder_block1(de_level1, t)
-        mid_feat = AdaIn(mid_feat, x_context2_de)
+        mid_feat = AdaIn(mid_feat, x_context2)
         # print(mid_feat.shape)
         # print(x_context2_de.shape)
         # mid_feat = AdaIn(mid_feat, x_style)
         # mid_feat = self.cross_att1_de(mid_feat, context)
+        '''
+        ######## control decoder forward ##########
+        # x4 = AdaIn(x4, x_context4)
+        # x4 = x4 + x_context4_de
+        de_level3_context = self.conv_up3(x_context4)
+        de_level3_context = torch.cat([de_level3_context, x_context3], 1)
+        de_level3_context = self.conv_cat3(de_level3_context)
+
+        # de_level3 = AdaIn(de_level3, x_context3)
+        # de_level3 = de_level3 + x_context3_de
+        de_level3_context = self.decoder_block3(de_level3_context, t)
+        # de_level3 = self.cross_att3_de(de_level3, context)
+        de_level2_context = self.conv_up2(de_level3_context)
+        de_level2_context = torch.cat([de_level2_context, x_context2], 1)
+        de_level2_context = self.conv_cat2(de_level2_context)
+
+        # de_level2 = AdaIn(de_level2, x_context2)
+        # de_level2 = de_level2 + x_context2_de
+        de_level2_context = self.decoder_block2(de_level2_context, t)
+        # de_level2 = self.cross_att2_de(de_level2, context)
+        de_level1_context = self.conv_up1(de_level2_context)
+
+        # de_level1 = AdaIn(de_level1, x_context1)
+        # de_level1 = de_level1 + x_context1_de
+        de_level1_context = torch.cat([de_level1_context, x_context1], 1)
+
+        mid_feat_context = self.decoder_block1(de_level1_context, t)
+        
+        ########## style transfer ##########
+        # water_u_dist, water_s_dist, _, _, _, _ = self.compute_z_water(mid_feat)
+        # air_u_dist, air_s_dist, _, _, _, _ = self.compute_z_air(mid_feat_context)
+        # air_latent_u = air_u_dist.rsample()
+        # air_latent_s = air_s_dist.rsample()
+        # air_latent_u = torch.unsqueeze(air_latent_u, -1)
+        # air_latent_u = torch.unsqueeze(air_latent_u, -1)
+        # air_latent_s = torch.unsqueeze(air_latent_s, -1)
+        # air_latent_s = torch.unsqueeze(air_latent_s, -1)
+        # air_u = self.conv_u(air_latent_u)
+        # air_s = self.conv_s(air_latent_s)
+        #
+        # mid_feat = self.AdaIN(mid_feat) * torch.abs(air_s) + air_u
+        '''
         return mid_feat, de_level2
 
 class AdaptiveInstanceNorm2d(nn.Module):
@@ -615,3 +662,4 @@ if __name__ == '__main__':
     # print(b)
     # total = sum([param.nelement() for param in model.parameters()])
     # print('parameter: %.2fM' % (total / 1e6))
+
