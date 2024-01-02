@@ -16,6 +16,23 @@ import math
 from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
 from model.spatial_attention import BasicTransformerBlock
 
+def calc_mean_std(input, eps=1e-5):
+    batch_size, channels = input.shape[:2]
+
+    reshaped = input.view(batch_size, channels, -1) # Reshape channel wise
+    mean = torch.mean(reshaped, dim = 2).view(batch_size, channels, 1) # Calculat mean and reshape
+    std = torch.sqrt(torch.var(reshaped, dim=2)+eps).view(batch_size, channels, 1) # Calculate variance, add epsilon (avoid 0 division),
+                                                                                # calculate std and reshape
+    return mean, std
+
+def AdaIn(content, style):
+    assert content.shape[:2] == style.shape[:2] # Only first two dim, such that different image sizes is possible
+    batch_size, n_channels = content.shape[:2]
+    mean_content, std_content = calc_mean_std(content)
+    mean_style, std_style = calc_mean_std(style)
+
+    output = std_style*((content - mean_content) / (std_content)) + mean_style # Normalise, then modify mean and std
+    return output
 
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
@@ -176,7 +193,7 @@ class DiT(nn.Module):
         self.depth = depth
 
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
-        self.style_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
+        self.style_embedder = PatchEmbed(input_size, patch_size, 3, hidden_size, bias=True)
         self.zero_control0 = nn.Conv1d(1024, 1024, 3, 1, 1)
         # self.x_embedder_style = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
@@ -273,7 +290,7 @@ class DiT(nn.Module):
         y: (N,) tensor of class labels
         """
         # a = self.x_embedder(x)
-        # print(a.shape)
+        # print(x.shape)
         # print(self.pos_embed.shape)
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         style = self.style_embedder(style) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
@@ -290,7 +307,8 @@ class DiT(nn.Module):
             x = self.transformer_blocks[i](x, context)
         control.reverse()
         for i in range(int(self.depth / 2), int(self.depth)):
-            x = self.blocks[i](x, c) + control[i - int(self.depth / 2)]
+            x = AdaIn(self.blocks[i](x, c), control[i - int(self.depth / 2)])
+            # print('y:', y.shape, '-----', 'control:', b.shape)
             x = self.transformer_blocks[i](x, context)
 
         # for block, context_blcok in zip(self.blocks, self.transformer_blocks):

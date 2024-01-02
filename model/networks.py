@@ -93,7 +93,7 @@ def define_G(opt):
     if ('norm_groups' not in model_opt['unet']) or model_opt['unet']['norm_groups'] is None:
         model_opt['unet']['norm_groups']=32
     if model_opt['which_model_G'] == 'trans_div':
-        model = unet_backup.DiT(depth=12, in_channels=4, hidden_size=384, patch_size=4, num_heads=6, input_size=128)
+        model = unet_backup.DiT(depth=12, in_channels=6, hidden_size=384, patch_size=4, num_heads=6, input_size=128)
     else:
         model = unet.UNet(
             in_channel=model_opt['unet']['in_channel'],

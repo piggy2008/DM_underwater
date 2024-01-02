@@ -12,6 +12,51 @@ import torchvision
 from torch.distributions import Normal, Independent
 from model.spatial_attention import SpatialTransformer
 
+
+class AdaAttN(nn.Module):
+    def __init__(self, in_planes, max_sample=256 * 256, key_planes=None):
+        super(AdaAttN, self).__init__()
+        if key_planes is None:
+            key_planes = in_planes
+        self.f = nn.Conv2d(key_planes, key_planes, (1, 1))
+        self.g = nn.Conv2d(key_planes, key_planes, (1, 1))
+        self.h = nn.Conv2d(in_planes, in_planes, (1, 1))
+        self.sm = nn.Softmax(dim=-1)
+        self.max_sample = max_sample
+
+    def forward(self, content, style, content_key, style_key, seed=None):
+        F = self.f(content_key)
+        G = self.g(style_key)
+        H = self.h(style)
+        b, _, h_g, w_g = G.size()
+        G = G.view(b, -1, w_g * h_g).contiguous()
+        if w_g * h_g > self.max_sample:
+            if seed is not None:
+                torch.manual_seed(seed)
+            index = torch.randperm(w_g * h_g).to(content.device)[:self.max_sample]
+            G = G[:, :, index]
+            style_flat = H.view(b, -1, w_g * h_g)[:, :, index].transpose(1, 2).contiguous()
+        else:
+            style_flat = H.view(b, -1, w_g * h_g).transpose(1, 2).contiguous()
+        b, _, h, w = F.size()
+        F = F.view(b, -1, w * h).permute(0, 2, 1)
+        S = torch.bmm(F, G)
+        # S: b, n_c, n_s
+        S = self.sm(S)
+        # mean: b, n_c, c
+        mean = torch.bmm(S, style_flat)
+        # std: b, n_c, c
+        std = torch.sqrt(torch.relu(torch.bmm(S, style_flat ** 2) - mean ** 2))
+        # mean, std: b, c, h, w
+        mean = mean.view(b, h, w, -1).permute(0, 3, 1, 2).contiguous()
+        std = std.view(b, h, w, -1).permute(0, 3, 1, 2).contiguous()
+        # mean = F.interpolate(mean, content.size()[2:])
+        # std = F.interpolate(std, content.size()[2:])
+        # print(mean.shape)
+        # print(std.shape)
+        # print(content.shape)
+        return std * mean_variance_norm(content) + mean
+
 def zero_module(module):
     """
     Zero out the parameters of a module and return it.
@@ -52,6 +97,12 @@ def calc_mean_std(input, eps=1e-5):
     std = torch.sqrt(torch.var(reshaped, dim=2)+eps).view(batch_size, channels, 1, 1) # Calculate variance, add epsilon (avoid 0 division),
                                                                                 # calculate std and reshape
     return mean, std
+
+def mean_variance_norm(feat):
+    size = feat.size()
+    mean, std = calc_mean_std(feat)
+    normalized_feat = (feat - mean.expand(size)) / std.expand(size)
+    return normalized_feat
 
 def AdaIn(content, style):
     assert content.shape[:2] == style.shape[:2] # Only first two dim, such that different image sizes is possible
@@ -413,7 +464,10 @@ class Encoder(nn.Module):
         # self.conv_u = nn.Conv2d(32, dim * 2 ** 1, kernel_size=1, padding=0)
         # self.conv_s = nn.Conv2d(32, dim * 2 ** 1, kernel_size=1, padding=0)
         # self.AdaIN = nn.InstanceNorm2d(dim * 2 ** 1)
-
+        self.adaattn1 = AdaAttN(dim, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
+        self.adaattn2 = AdaAttN(dim * 2 ** 1, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
+        self.adaattn3 = AdaAttN(dim * 2 ** 2, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
+        self.adaattn4 = AdaAttN(dim * 2 ** 3, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
     def forward(self, x, t, style, context):
         x_style = self.input_hint_block(style)
         x = self.conv1(x)
@@ -458,14 +512,42 @@ class Encoder(nn.Module):
         # x_context3_de = self.block3_zero_control(x_context3)
         # x_context4_de = self.block4_zero_control(x_context4)
 
+        ######### style AdaAttN ###########
+        feat_scales = torch.cat([x1, F.interpolate(x2, (x1.size()[2:])),
+                                 F.interpolate(x3, (x1.size()[2:])), F.interpolate(x4, (x1.size()[2:]))], dim=1)
+        feat_scales_context = torch.cat([x_context1, F.interpolate(x_context2, (x_context1.size()[2:])),
+                                         F.interpolate(x_context3, (x_context1.size()[2:])),
+                                         F.interpolate(x_context4, (x_context1.size()[2:]))], dim=1)
+
+        feat_scales2 = torch.cat([F.interpolate(x1, (x2.size()[2:])), x2,
+                                  F.interpolate(x3, (x2.size()[2:])), F.interpolate(x4, (x2.size()[2:]))], dim=1)
+        feat_scales_context2 = torch.cat([F.interpolate(x_context1, (x_context2.size()[2:])), x_context2,
+                                          F.interpolate(x_context3, (x_context2.size()[2:])),
+                                          F.interpolate(x_context4, (x_context2.size()[2:]))], dim=1)
+
+        feat_scales3 = torch.cat([F.interpolate(x1, (x3.size()[2:])), F.interpolate(x2, (x3.size()[2:])),
+                                  x3, F.interpolate(x4, (x3.size()[2:]))], dim=1)
+        feat_scales_context3 = torch.cat(
+            [F.interpolate(x_context1, (x_context3.size()[2:])), F.interpolate(x_context2, (x_context3.size()[2:])),
+             x_context3,
+             F.interpolate(x_context4, (x_context3.size()[2:]))], dim=1)
+
+        feat_scales4 = torch.cat([F.interpolate(x1, (x4.size()[2:])), F.interpolate(x2, (x4.size()[2:])),
+                                  F.interpolate(x3, (x4.size()[2:])), x4], dim=1)
+        feat_scales_context4 = torch.cat(
+            [F.interpolate(x_context1, (x_context4.size()[2:])), F.interpolate(x_context2, (x_context4.size()[2:])),
+             F.interpolate(x_context3, (x_context4.size()[2:])),
+             x_context4], dim=1)
         ######## decoder forward ##########
-        x4 = AdaIn(x4, x_context4)
+        # x4 = AdaIn(x4, x_context4)
+        x4 = self.adaattn4(x4, x_context4, feat_scales4, feat_scales_context4)
         # x4 = x4 + x_context4_de
         de_level3 = self.conv_up3(x4)
         de_level3 = torch.cat([de_level3, x3], 1)
         de_level3 = self.conv_cat3(de_level3)
 
-        de_level3 = AdaIn(de_level3, x_context3)
+        # de_level3 = AdaIn(de_level3, x_context3)
+        de_level3 = self.adaattn3(de_level3, x_context3, feat_scales3, feat_scales_context3)
         # de_level3 = de_level3 + x_context3_de
         de_level3 = self.decoder_block3(de_level3, t)
         de_level3 = self.cross_att3_de(de_level3, context)
@@ -473,18 +555,23 @@ class Encoder(nn.Module):
         de_level2 = torch.cat([de_level2, x2], 1)
         de_level2 = self.conv_cat2(de_level2)
 
-        de_level2 = AdaIn(de_level2, x_context2)
+        # de_level2 = AdaIn(de_level2, x_context2)
+        de_level2 = self.adaattn2(de_level2, x_context2, feat_scales2, feat_scales_context2)
         # de_level2 = de_level2 + x_context2_de
         de_level2 = self.decoder_block2(de_level2, t)
         de_level2 = self.cross_att2_de(de_level2, context)
         de_level1 = self.conv_up1(de_level2)
 
-        de_level1 = AdaIn(de_level1, x_context1)
+        # de_level1 = AdaIn(de_level1, x_context1)
+        de_level2 = self.adaattn1(de_level1, x_context1, feat_scales, feat_scales_context)
         # de_level1 = de_level1 + x_context1_de
         de_level1 = torch.cat([de_level1, x1], 1)
 
         mid_feat = self.decoder_block1(de_level1, t)
-        mid_feat = AdaIn(mid_feat, x_context2)
+        # mid_feat = AdaIn(mid_feat, x_context2)
+        mid_feat = self.adaattn2(mid_feat, x_context2,
+                                 F.interpolate(feat_scales2, context.size()[2:]),
+                                 F.interpolate(feat_scales_context2, context.size()[2:]))
         # print(mid_feat.shape)
         # print(x_context2_de.shape)
         # mid_feat = AdaIn(mid_feat, x_style)
@@ -641,6 +728,15 @@ if __name__ == '__main__':
     # print(c.shape)
     # d = insnorm(img) + c
     # print(d.shape)
+    # a = AdaAttN(96, 128 * 128)
+    #
+    # a_input = torch.zeros(2, 96, 128, 128)
+    # b_input = torch.zeros(2, 96, 128, 128)
+    #
+    # c_input = torch.zeros(2, 96 * 2, 128, 128)
+    # d_input = torch.zeros(2, 96 * 2, 128, 128)
+    #
+    # a_output = a(a_input, b_input, c_input, d_input)
 
     from model.utils import load_part_of_model2
     param_path = '/home/ty/code/DM_underwater/experiments_train/sr_ffhq_230922_155247/checkpoint/I200000_E710_gen.pth'
