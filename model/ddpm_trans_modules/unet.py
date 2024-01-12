@@ -11,7 +11,22 @@ from model.ddpm_trans_modules.trans_block_sge import TransformerBlock_sge
 import torchvision
 from torch.distributions import Normal, Independent
 from model.spatial_attention import SpatialTransformer
+import numpy as np
 
+def gaussian_pdf(miu, sigma, x):
+    return np.exp(-(x - miu) ** 2 / (2 * sigma ** 2)) / (math.sqrt(2 * math.pi) * sigma)
+
+def generate_gaussian_mask(units, units_num):
+    sigmas = np.linspace(5, 0.5, len(units))
+    # print(sigmas)
+    x = np.linspace(0, units_num, units_num)
+    y = 0
+    for i, sigma in enumerate(sigmas):
+        sig = math.sqrt(sigma)
+        y += gaussian_pdf(units[i], sig, x)
+    yt = torch.from_numpy(y)
+    yt = yt.view(1, units_num, 1, 1)
+    return yt
 
 class AdaAttN(nn.Module):
     def __init__(self, in_planes, max_sample=256 * 256, key_planes=None):
@@ -104,12 +119,15 @@ def mean_variance_norm(feat):
     normalized_feat = (feat - mean.expand(size)) / std.expand(size)
     return normalized_feat
 
-def AdaIn(content, style):
+def AdaIn(content, style, edit=False):
     assert content.shape[:2] == style.shape[:2] # Only first two dim, such that different image sizes is possible
     batch_size, n_channels = content.shape[:2]
     mean_content, std_content = calc_mean_std(content)
     mean_style, std_style = calc_mean_std(style)
-
+    if edit:
+        print('before:', mean_style[:, 17, :, :])
+        mean_style[:, 17, :, :] =  -5
+        print('after:', mean_style[:, 17, :, :])
     output = std_style*((content - mean_content) / (std_content)) + mean_style # Normalise, then modify mean and std
     return output
 
@@ -459,15 +477,21 @@ class Encoder(nn.Module):
         self.cross_att3_de = SpatialTransformer(dim * 2 ** 2, 1, dim * 2 ** 2, context_dim=768)
 
         ########## style transfer ##########
+        # block1
+        self.units1 = [0, 1, 3, 5, 6, 7, 10, 11, 12, 15, 16, 17, 20, 24, 27, 29, 32, 33, 34, 36, 37, 39, 46]
+        self.units2 = [19, 6, 80, 10, 20, 83, 74, 84, 60, 85, 48, 93, 49, 78, 58, 63, 94]
+        # self.mask1 = nn.Parameter(generate_gaussian_mask(self.units1, dim * 2 ** 0), requires_grad=False)
+        # self.units_num = dim * 2 ** 1
+        # self.mask2 = nn.Parameter(generate_gaussian_mask(self.units2, dim * 2 ** 1), requires_grad=False)
         # self.compute_z_water = Compute_z(32, input_dim=dim * 2 ** 1)
         # self.compute_z_air = Compute_z(32, input_dim=dim * 2 ** 1)
         # self.conv_u = nn.Conv2d(32, dim * 2 ** 1, kernel_size=1, padding=0)
         # self.conv_s = nn.Conv2d(32, dim * 2 ** 1, kernel_size=1, padding=0)
         # self.AdaIN = nn.InstanceNorm2d(dim * 2 ** 1)
-        self.adaattn1 = AdaAttN(dim, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
-        self.adaattn2 = AdaAttN(dim * 2 ** 1, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
-        self.adaattn3 = AdaAttN(dim * 2 ** 2, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
-        self.adaattn4 = AdaAttN(dim * 2 ** 3, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
+        # self.adaattn1 = AdaAttN(dim, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
+        # self.adaattn2 = AdaAttN(dim * 2 ** 1, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
+        # self.adaattn3 = AdaAttN(dim * 2 ** 2, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
+        # self.adaattn4 = AdaAttN(dim * 2 ** 3, 128 * 128, dim + (dim * 2 ** 1) + (dim * 2 ** 2) + (dim * 2 ** 3))
     def forward(self, x, t, style, context):
         x_style = self.input_hint_block(style)
         x = self.conv1(x)
@@ -489,11 +513,14 @@ class Encoder(nn.Module):
         # x_style = AdaIn(x, x_style)
         # x_context = x_style + x
         x_context1 = self.block1_control(x_style, t)
+        # x_context1 += x_context1 * torch.cat([self.mask1] * x_context1.shape[0], dim=0)
         # x_context1 = self.cross_att1_control(x_context1, context)
         # x_context1 = self.cross_att12_control(x_context1, x1)
         # print('context1 shape:', x_context1.shape)
         x_context2 = self.conv2_control(x_context1)
         x_context2 = self.block2_control(x_context2, t)
+        # mask = generate_gaussian_mask(self.units, self.units_num)
+        # x_context2 += x_context2 * torch.cat([self.mask2] * x_context2.shape[0], dim=0)
         # x_context2 = self.cross_att2_control(x_context2, context)
         # x_context2 = self.cross_att22_control(x_context2, x2)
 
@@ -513,41 +540,41 @@ class Encoder(nn.Module):
         # x_context4_de = self.block4_zero_control(x_context4)
 
         ######### style AdaAttN ###########
-        feat_scales = torch.cat([x1, F.interpolate(x2, (x1.size()[2:])),
-                                 F.interpolate(x3, (x1.size()[2:])), F.interpolate(x4, (x1.size()[2:]))], dim=1)
-        feat_scales_context = torch.cat([x_context1, F.interpolate(x_context2, (x_context1.size()[2:])),
-                                         F.interpolate(x_context3, (x_context1.size()[2:])),
-                                         F.interpolate(x_context4, (x_context1.size()[2:]))], dim=1)
-
-        feat_scales2 = torch.cat([F.interpolate(x1, (x2.size()[2:])), x2,
-                                  F.interpolate(x3, (x2.size()[2:])), F.interpolate(x4, (x2.size()[2:]))], dim=1)
-        feat_scales_context2 = torch.cat([F.interpolate(x_context1, (x_context2.size()[2:])), x_context2,
-                                          F.interpolate(x_context3, (x_context2.size()[2:])),
-                                          F.interpolate(x_context4, (x_context2.size()[2:]))], dim=1)
-
-        feat_scales3 = torch.cat([F.interpolate(x1, (x3.size()[2:])), F.interpolate(x2, (x3.size()[2:])),
-                                  x3, F.interpolate(x4, (x3.size()[2:]))], dim=1)
-        feat_scales_context3 = torch.cat(
-            [F.interpolate(x_context1, (x_context3.size()[2:])), F.interpolate(x_context2, (x_context3.size()[2:])),
-             x_context3,
-             F.interpolate(x_context4, (x_context3.size()[2:]))], dim=1)
-
-        feat_scales4 = torch.cat([F.interpolate(x1, (x4.size()[2:])), F.interpolate(x2, (x4.size()[2:])),
-                                  F.interpolate(x3, (x4.size()[2:])), x4], dim=1)
-        feat_scales_context4 = torch.cat(
-            [F.interpolate(x_context1, (x_context4.size()[2:])), F.interpolate(x_context2, (x_context4.size()[2:])),
-             F.interpolate(x_context3, (x_context4.size()[2:])),
-             x_context4], dim=1)
+        # feat_scales = torch.cat([x1, F.interpolate(x2, (x1.size()[2:])),
+        #                          F.interpolate(x3, (x1.size()[2:])), F.interpolate(x4, (x1.size()[2:]))], dim=1)
+        # feat_scales_context = torch.cat([x_context1, F.interpolate(x_context2, (x_context1.size()[2:])),
+        #                                  F.interpolate(x_context3, (x_context1.size()[2:])),
+        #                                  F.interpolate(x_context4, (x_context1.size()[2:]))], dim=1)
+        #
+        # feat_scales2 = torch.cat([F.interpolate(x1, (x2.size()[2:])), x2,
+        #                           F.interpolate(x3, (x2.size()[2:])), F.interpolate(x4, (x2.size()[2:]))], dim=1)
+        # feat_scales_context2 = torch.cat([F.interpolate(x_context1, (x_context2.size()[2:])), x_context2,
+        #                                   F.interpolate(x_context3, (x_context2.size()[2:])),
+        #                                   F.interpolate(x_context4, (x_context2.size()[2:]))], dim=1)
+        #
+        # feat_scales3 = torch.cat([F.interpolate(x1, (x3.size()[2:])), F.interpolate(x2, (x3.size()[2:])),
+        #                           x3, F.interpolate(x4, (x3.size()[2:]))], dim=1)
+        # feat_scales_context3 = torch.cat(
+        #     [F.interpolate(x_context1, (x_context3.size()[2:])), F.interpolate(x_context2, (x_context3.size()[2:])),
+        #      x_context3,
+        #      F.interpolate(x_context4, (x_context3.size()[2:]))], dim=1)
+        #
+        # feat_scales4 = torch.cat([F.interpolate(x1, (x4.size()[2:])), F.interpolate(x2, (x4.size()[2:])),
+        #                           F.interpolate(x3, (x4.size()[2:])), x4], dim=1)
+        # feat_scales_context4 = torch.cat(
+        #     [F.interpolate(x_context1, (x_context4.size()[2:])), F.interpolate(x_context2, (x_context4.size()[2:])),
+        #      F.interpolate(x_context3, (x_context4.size()[2:])),
+        #      x_context4], dim=1)
         ######## decoder forward ##########
-        # x4 = AdaIn(x4, x_context4)
-        x4 = self.adaattn4(x4, x_context4, feat_scales4, feat_scales_context4)
+        x4 = AdaIn(x4, x_context4)
+        # x4 = self.adaattn4(x4, x_context4, feat_scales4, feat_scales_context4)
         # x4 = x4 + x_context4_de
         de_level3 = self.conv_up3(x4)
         de_level3 = torch.cat([de_level3, x3], 1)
         de_level3 = self.conv_cat3(de_level3)
 
-        # de_level3 = AdaIn(de_level3, x_context3)
-        de_level3 = self.adaattn3(de_level3, x_context3, feat_scales3, feat_scales_context3)
+        de_level3 = AdaIn(de_level3, x_context3)
+        # de_level3 = self.adaattn3(de_level3, x_context3, feat_scales3, feat_scales_context3)
         # de_level3 = de_level3 + x_context3_de
         de_level3 = self.decoder_block3(de_level3, t)
         de_level3 = self.cross_att3_de(de_level3, context)
@@ -555,23 +582,24 @@ class Encoder(nn.Module):
         de_level2 = torch.cat([de_level2, x2], 1)
         de_level2 = self.conv_cat2(de_level2)
 
-        # de_level2 = AdaIn(de_level2, x_context2)
-        de_level2 = self.adaattn2(de_level2, x_context2, feat_scales2, feat_scales_context2)
+        de_level2 = AdaIn(de_level2, x_context2)
+        # de_level2 = self.adaattn2(de_level2, x_context2, feat_scales2, feat_scales_context2)
         # de_level2 = de_level2 + x_context2_de
         de_level2 = self.decoder_block2(de_level2, t)
         de_level2 = self.cross_att2_de(de_level2, context)
         de_level1 = self.conv_up1(de_level2)
 
-        # de_level1 = AdaIn(de_level1, x_context1)
-        de_level2 = self.adaattn1(de_level1, x_context1, feat_scales, feat_scales_context)
+        de_level1 = AdaIn(de_level1, x_context1)
+        # de_level1[:, :40, :, :] = -5
+        # de_level2 = self.adaattn1(de_level1, x_context1, feat_scales, feat_scales_context)
         # de_level1 = de_level1 + x_context1_de
         de_level1 = torch.cat([de_level1, x1], 1)
 
         mid_feat = self.decoder_block1(de_level1, t)
-        # mid_feat = AdaIn(mid_feat, x_context2)
-        mid_feat = self.adaattn2(mid_feat, x_context2,
-                                 F.interpolate(feat_scales2, context.size()[2:]),
-                                 F.interpolate(feat_scales_context2, context.size()[2:]))
+        mid_feat = AdaIn(mid_feat, x_context2)
+        # mid_feat = self.adaattn2(mid_feat, x_context2,
+        #                          F.interpolate(feat_scales2, context.size()[2:]),
+        #                          F.interpolate(feat_scales_context2, context.size()[2:]))
         # print(mid_feat.shape)
         # print(x_context2_de.shape)
         # mid_feat = AdaIn(mid_feat, x_style)

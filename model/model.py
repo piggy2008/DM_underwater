@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import os
 import model.networks as networks
-from model.utils import load_part_of_model2, load_part_of_model3, load_part_of_model4
+from model.utils import load_part_of_model, load_part_of_model2, load_part_of_model3, load_part_of_model4
 from model.style_transfer import VGGPerceptualLoss
 # from .ddpm_trans_modules.discriminator import D2
 from .base_model import BaseModel
@@ -280,7 +280,7 @@ class DDPM(BaseModel):
             # network2.load_state_dict(torch.load(
             #     gen_path2), strict=(not self.opt['model']['finetune_norm']))
 
-            load_part_of_model3(network, gen_path)
+            load_part_of_model(network, gen_path, (not self.opt['model']['finetune_norm']))
             if self.opt['phase'] == 'train':
                 # optimizer
                 opt = torch.load(opt_path)

@@ -1,9 +1,13 @@
 import os
+
+import cv2
 from PIL import Image
 import glob
 import torch
 import clip
 import numpy as np
+from matplotlib import pyplot as plt
+import torch.nn as nn
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -12,7 +16,10 @@ model, preprocess = clip.load("ViT-B/32", device=device)
 categories = ['fish', 'marine life', 'coral', 'rock', 'diving', 'deep see',
                       'wreckage', 'sculpture', 'caves', 'underwater stuff']
 
+categories_red_color = ['red', 'green', 'blue']
+cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 text = clip.tokenize(categories).to(device)
+color_text = clip.tokenize(categories_red_color).to(device)
 
 def generate_clip_label():
     path = 'dataset/water_val_16_128/hr_128'
@@ -38,6 +45,51 @@ def generate_clip_label():
 
         file.close()
 
+def judge_color_clip(image):
+
+    with torch.no_grad():
+        image = preprocess(image).unsqueeze(0).to(device)
+        # image_features = model.encode_image(image)
+        # text_features = model.encode_text(text)
+        logits_per_image, logits_per_text = model(image, color_text)
+        probs = logits_per_image.softmax(dim=-1).cpu().numpy()
+        color_level = categories_red_color[np.argmax(probs)]
+        print(color_level, '----', np.max(probs))
+
+def compute_semantic_dis(image, txt):
+
+    with torch.no_grad():
+        image = preprocess(image).unsqueeze(0).to(device)
+        text = clip.tokenize(txt).to(device)
+        image_features = model.encode_image(image)
+        text_features = model.encode_text(text)
+        # logits_per_image, logits_per_text = model(image, color_text)
+        # probs = logits_per_image.softmax(dim=-1).cpu().numpy()
+        # color_level = categories_red_color[np.argmax(probs)]
+        dis = cos(image_features, text_features)
+        # print('distance between image and ', txt, ' =', dis)
+        return dis.data.cpu().numpy()
+
+def compute_hist_dis(image, anchor, color):
+    chans = cv2.split(image)
+    chans_anchor = cv2.split(anchor)
+    if color == 'red':
+        chan = chans[2]
+        chan_anchor = chans_anchor[2]
+    elif color == 'green':
+        chan = chans[1]
+        chan_anchor = chans_anchor[1]
+    else:
+        chan = chans[0]
+        chan_anchor = chans_anchor[0]
+
+    hist = cv2.calcHist([chan], [0], None, [256], [0, 256])
+    cv2.normalize(hist, hist, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+    hist_anchor = cv2.calcHist([chan_anchor], [0], None, [256], [0, 256])
+    cv2.normalize(hist_anchor, hist_anchor, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+
+    metric_val = cv2.compareHist(hist, hist_anchor, cv2.HISTCMP_CHISQR)
+    return metric_val
 def test_clip_loss():
     path = 'dataset/water_train_16_128/sr_16_128/00151.png'
     path2 = 'dataset/water_train_16_128/hr_128/00151.png'
@@ -79,7 +131,33 @@ def test_clip_loss():
 
 if __name__ == '__main__':
     # test_clip_loss()
-    generate_clip_label()
+    # generate_clip_label()
+    # image = Image.open('./b.jpg').convert('RGB')
+    # image.resize((128, 128))
+    # image2 = Image.open('./a.jpg').convert('RGB')
+    image = cv2.imread('./momiji.jpeg')
+    image2 = cv2.imread('./a.jpg')
+    image3 = cv2.imread('./b.jpg')
+    print(compute_hist_dis(image2, image, 'red'))
+    print(compute_hist_dis(image3, image, 'red'))
+    # judge_color_clip(image)
+    # judge_color_clip(image2)
+    # compute_semantic_dis(image, 'red style')
+    # compute_semantic_dis(image2, 'red style')
+    # chans = cv2.split(image)
+    # chans2 = cv2.split(image2)
+    #
+    # colors = ('b', 'g', 'r')
+    #
+    # for i, (chan, color) in enumerate(zip(chans, colors)):
+    #     hist = cv2.calcHist([chan], [0], None, [256], [0, 256])
+    #     hist2 = cv2.calcHist([chans2[i]], [0], None, [256], [0, 256])
+    #     plt.plot(hist, color=color)
+    #     plt.plot(hist2, color=color, linestyle='dashed')
+    #     plt.xlim([0, 256])
+    #
+    # plt.show()
+
 
 
 
