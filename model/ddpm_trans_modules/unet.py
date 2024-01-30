@@ -17,9 +17,9 @@ def gaussian_pdf(miu, sigma, x):
     return np.exp(-(x - miu) ** 2 / (2 * sigma ** 2)) / (math.sqrt(2 * math.pi) * sigma)
 
 def generate_gaussian_mask(units, units_num):
-    sigmas = np.linspace(5, 0.5, len(units))
+    sigmas = np.linspace(5, 0.5, len(units), dtype=np.float32)
     # print(sigmas)
-    x = np.linspace(0, units_num, units_num)
+    x = np.linspace(0, units_num, units_num, dtype=np.float32)
     y = 0
     for i, sigma in enumerate(sigmas):
         sig = math.sqrt(sigma)
@@ -478,11 +478,15 @@ class Encoder(nn.Module):
 
         ########## style transfer ##########
         # block1
-        self.units1 = [0, 1, 3, 5, 6, 7, 10, 11, 12, 15, 16, 17, 20, 24, 27, 29, 32, 33, 34, 36, 37, 39, 46]
-        self.units2 = [19, 6, 80, 10, 20, 83, 74, 84, 60, 85, 48, 93, 49, 78, 58, 63, 94]
-        # self.mask1 = nn.Parameter(generate_gaussian_mask(self.units1, dim * 2 ** 0), requires_grad=False)
+        # self.units1 = [0, 1, 3, 5, 6, 7, 10, 11, 12, 15, 16, 17, 20, 24, 27, 29, 32, 33, 34, 36, 37, 39, 46]
+        # self.units2 = [19, 6, 80, 10, 20, 83, 74, 84, 60, 85, 48, 93, 49, 78, 58, 63, 94]
+        self.units1 = [11, 17]
+        self.units2 = [18, 10, 30, 83, 74, 32, 49, 85, 14, 78, 48, 58, 63, 94]
+        # self.units1 = [0, 6, 33, 17, 11]
+        # self.units2 = [85, 93, 80, 48, 74, 78, 49, 83, 63, 94, 58]
+        self.mask1 = nn.Parameter(generate_gaussian_mask(self.units1, dim * 2 ** 0), requires_grad=False)
         # self.units_num = dim * 2 ** 1
-        # self.mask2 = nn.Parameter(generate_gaussian_mask(self.units2, dim * 2 ** 1), requires_grad=False)
+        self.mask2 = nn.Parameter(generate_gaussian_mask(self.units2, dim * 2 ** 1), requires_grad=False)
         # self.compute_z_water = Compute_z(32, input_dim=dim * 2 ** 1)
         # self.compute_z_air = Compute_z(32, input_dim=dim * 2 ** 1)
         # self.conv_u = nn.Conv2d(32, dim * 2 ** 1, kernel_size=1, padding=0)
@@ -513,14 +517,18 @@ class Encoder(nn.Module):
         # x_style = AdaIn(x, x_style)
         # x_context = x_style + x
         x_context1 = self.block1_control(x_style, t)
-        # x_context1 += x_context1 * torch.cat([self.mask1] * x_context1.shape[0], dim=0)
+        tmp_1 = x_context1 * torch.cat([self.mask1] * x_context1.shape[0], dim=0)
+        x_context1 = x_context1 + tmp_1
+        # print(a.type())
+        # print(x_context1.type())
         # x_context1 = self.cross_att1_control(x_context1, context)
         # x_context1 = self.cross_att12_control(x_context1, x1)
         # print('context1 shape:', x_context1.shape)
         x_context2 = self.conv2_control(x_context1)
         x_context2 = self.block2_control(x_context2, t)
         # mask = generate_gaussian_mask(self.units, self.units_num)
-        # x_context2 += x_context2 * torch.cat([self.mask2] * x_context2.shape[0], dim=0)
+        tmp_2 = x_context2 * torch.cat([self.mask2] * x_context2.shape[0], dim=0)
+        x_context2 = x_context2 + tmp_2
         # x_context2 = self.cross_att2_control(x_context2, context)
         # x_context2 = self.cross_att22_control(x_context2, x2)
 
@@ -768,9 +776,9 @@ if __name__ == '__main__':
 
     from model.utils import load_part_of_model2
     param_path = '/home/ty/code/DM_underwater/experiments_train/sr_ffhq_230922_155247/checkpoint/I200000_E710_gen.pth'
-    img = torch.zeros(2, 4, 128, 128)
+    img = torch.zeros(2, 4, 256, 256)
     time = torch.tensor([1, 2])
-    style = torch.zeros(2, 3, 128, 128)
+    style = torch.zeros(2, 3, 256, 256)
     context = torch.zeros(2, 77, 768)
     model = UNet(inner_channel=48, norm_groups=24, in_channel=4)
 
